@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"github.com/codenotary/immudb/pkg/api/schema"
@@ -14,7 +13,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"unicode"
 )
 
 func Parse() error {
@@ -96,19 +94,14 @@ func Parse() error {
 		}
 
 		if count >= FlushSize {
-			br := &client.BatchRequest{
-				Keys:   keys,
-				Values: values,
-			}
-			_, err = cli.SetBatch(ctx, br)
-			if err != nil {
-				log.Fatal(err)
-			}
+			inject(ctx, cli, keys, values)
 			keys = nil
 			values = nil
 			count = 0
 		}
 	}
+
+	inject(ctx, cli, keys, values)
 
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading "+Source+":", err)
@@ -116,41 +109,13 @@ func Parse() error {
 	return nil
 }
 
-func LineCounter(r io.Reader) (int, error) {
-
-	var count int
-	const lineBreak = '\n'
-
-	buf := make([]byte, bufio.MaxScanTokenSize)
-
-	for {
-		bufferSize, err := r.Read(buf)
-		if err != nil && err != io.EOF {
-			return 0, err
-		}
-
-		var buffPosition int
-		for {
-			i := bytes.IndexByte(buf[buffPosition:], lineBreak)
-			if i == -1 || bufferSize == buffPosition {
-				break
-			}
-			buffPosition += i + 1
-			count++
-		}
-		if err == io.EOF {
-			break
-		}
+func inject(ctx context.Context, cli client.ImmuClient, keys, values []io.Reader) {
+	br := &client.BatchRequest{
+		Keys:   keys,
+		Values: values,
 	}
-
-	return count, nil
-}
-
-func IsLower(s string) bool {
-	for _, r := range s {
-		if !unicode.IsLower(r) && unicode.IsLetter(r) {
-			return false
-		}
+	_, err := cli.SetBatch(ctx, br)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return true
 }
